@@ -8,12 +8,81 @@ import factories from '../../factories';
 import urlJoin from 'url-join';
 
 const server = app.listen();
+const bagTable: any[] = [];
+const cubeTable: any[] = [];
 
 afterAll(() => server.close());
 
+const getBag = (id: number) => bagTable.find((bag) => bag.id === id);
+
+jest.mock('../../models', () => {
+  const originalModule = jest.requireActual('../../models');
+  return {
+    __esModule: true,
+    ...originalModule,
+    Cuboid: {
+      relationMappings: {
+        bag: {},
+      },
+      query: () => ({
+        insert: async (obj: any) => {
+          const volume = obj.width * obj.height * obj.depth;
+          const id = Math.floor(Math.random() * 100);
+          const bag = getBag(obj.bagId);
+          const cube = {
+            ...obj,
+            volume,
+            id,
+            bag: bag || {},
+          };
+          cubeTable.push(cube);
+          return Promise.resolve(cube);
+        },
+        findByIds: () => ({
+          withGraphFetched: () => Promise.resolve(cubeTable),
+        }),
+        findById: (id: number) => ({
+          withGraphFetched: () => {
+            const cubo = cubeTable.find((c) => Number(c.id) === Number(id));
+            return Promise.resolve(cubo);
+          },
+        }),
+        update: async (obj: any) => Promise.resolve(obj),
+      }),
+    },
+    Bag: {
+      relationMappings: {
+        bag: {},
+      },
+      query: () => ({
+        insert: async ({
+          volume,
+          title,
+        }: {
+          volume: string;
+          title: string;
+        }) => {
+          const newObj = {
+            title,
+            volume,
+            id: Math.floor(Math.random() * 100),
+          };
+          bagTable.push(newObj);
+          return Promise.resolve(newObj);
+        },
+        findById: (id: number) => ({
+          withGraphFetched: () => {
+            const bag = bagTable.find((c) => Number(c.id) === Number(id));
+            return Promise.resolve(bag);
+          },
+        }),
+      }),
+    },
+  };
+});
+
 describe('cuboid get', () => {
   let bagId: Id;
-
   beforeEach(async () => {
     bagId = (
       await Bag.query().insert(
@@ -28,7 +97,6 @@ describe('cuboid get', () => {
   it('should get all cuboids', async () => {
     const sampleSize = 3;
     const cuboids = factories.cuboid.buildList(sampleSize, { bagId });
-
     const ids = await Promise.all(
       cuboids.map(
         async ({ id, ...data }) => (await Cuboid.query().insert(data)).id
@@ -53,11 +121,9 @@ describe('cuboid get', () => {
   it('should get by id', async () => {
     const cuboid = factories.cuboid.build({ bagId });
     const id = (await Cuboid.query().insert(cuboid)).id;
-
     const response = await request(server).get(
       urlJoin('/cuboids', id.toString())
     );
-
     expect(response.status).toBe(HttpStatus.OK);
     expect(typeof response.body.id).toBe('number');
     expect(response.body.id).toBe(id);
@@ -137,14 +203,13 @@ describe('cuboid create', () => {
 
   it('should fail if insufficient capacity', async () => {
     const cuboid = factories.cuboid.build({
-      width: 7,
+      width: 70,
       height: 8,
       depth: 9,
       bagId,
     });
 
     const response = await request(server).post('/cuboids').send(cuboid);
-
     expect(response.status).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
     expect(response.body.message).toBe('Insufficient capacity in bag');
   });
@@ -196,9 +261,17 @@ describe('cuboid update', () => {
     );
   });
 
-  it('should succeed to update the cuboid', () => {
+  it('should succeed to update the cuboid', async () => {
     const [newWidth, newHeight, newDepth] = [5, 5, 5];
-    const response = { body: {} as Cuboid, status: HttpStatus.OK };
+    const newCube = {
+      id: cuboid.id,
+      width: newWidth,
+      height: newHeight,
+      depth: newDepth,
+    };
+    const response = await request(server)
+      .put(`/cuboids/${cuboid.id}`)
+      .send(newCube);
     cuboid = response.body;
 
     expect(response.status).toBe(HttpStatus.OK);
