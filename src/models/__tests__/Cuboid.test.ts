@@ -19,7 +19,6 @@ jest.mock('../Bag', () => {
   };
 });
 
-
 jest.mock('../Cuboid', () => {
   const originalModule = jest.requireActual('../Cuboid');
   return {

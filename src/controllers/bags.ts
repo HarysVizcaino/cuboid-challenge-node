@@ -13,7 +13,6 @@ export const list = async (req: Request, res: Response): Promise<Response> => {
 export const get = async (req: Request, res: Response): Promise<Response> => {
   const id: Id = req.params.id;
   const bag = await Bag.query().findById(id).withGraphFetched('cuboids');
-
   if (!bag) {
     return res.sendStatus(HttpStatus.NOT_FOUND);
   }
