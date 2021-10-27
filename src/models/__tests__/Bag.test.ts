@@ -1,5 +1,21 @@
 import Bag from '../Bag';
 
+jest.mock('../Bag', () => {
+  const originalModule = jest.requireActual('../Bag');
+  return {
+    __esModule: true,
+    ...originalModule,
+    default: {
+      query: () => ({
+        insertGraphAndFetch: async (obj: any) => Promise.resolve(obj),
+      }),
+      relationMappings: {
+        cuboids: {},
+      },
+    },
+  };
+});
+
 const bags = [
   {
     volume: 10,
@@ -52,6 +68,8 @@ describe.each([
       volume,
       title,
       cuboids,
+      payloadVolume,
+      availableVolume,
     });
   });
 
