@@ -7,6 +7,47 @@ import { Bag } from '../../models';
 import factories from '../../factories';
 
 const server = app.listen();
+const bagTable: any[] = [];
+
+const getBag = (id: number) =>
+  bagTable.find((bag) => Number(bag.id) === Number(id));
+
+jest.mock('../../models', () => {
+  const originalModule = jest.requireActual('../../models');
+  return {
+    __esModule: true,
+    ...originalModule,
+    Bag: {
+      relationMappings: {
+        bag: {},
+      },
+      query: () => ({
+        insert: async ({
+          volume,
+          title,
+        }: {
+          volume: string;
+          title: string;
+        }) => {
+          const newObj = {
+            title,
+            volume,
+            id: Math.floor(Math.random() * 100),
+          };
+          bagTable.push({ ...newObj, cuboids: [1, 2, 3, 4, 5] });
+          return Promise.resolve(newObj);
+        },
+        findByIds: () => ({
+          withGraphFetched: () => Promise.resolve(bagTable),
+        }),
+        findById: (id: number) => ({
+          ...getBag(id),
+          withGraphFetched: () => Promise.resolve(getBag(id)),
+        }),
+      }),
+    },
+  };
+});
 
 afterAll(() => server.close());
 
@@ -14,7 +55,6 @@ describe('bag list', () => {
   it('should get all bags', async () => {
     const sampleSize = 3;
     const bags = factories.bag.buildList(sampleSize);
-
     const ids = await Promise.all(
       bags.map(async ({ id, ...data }) => (await Bag.query().insert(data)).id)
     );
@@ -22,7 +62,6 @@ describe('bag list', () => {
     const response = await request(server).get('/bags').query({
       ids,
     });
-
     expect(response.status).toBe(HttpStatus.OK);
     expect(response.body.length).toBe(ids.length);
     response.body.forEach((bag: Bag) => {
@@ -55,17 +94,12 @@ describe('bag create', () => {
   it('should create', async () => {
     const bag = factories.bag.build({ volume: 111, title: 'A bag' });
     const response = await request(server).post('/bags').send(bag);
-
     expect(response.status).toBe(HttpStatus.CREATED);
-
     const fetchedBag = await Bag.query().findById(response.body.id);
-
     if (!fetchedBag) {
       throw new Error('Bag not found');
     }
-
     const { volume, title } = fetchedBag;
-
     expect(volume).toBe(bag.volume);
     expect(title).toBe(bag.title);
   });
